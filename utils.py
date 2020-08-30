@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import pickle as pkl
 
 def pad_(X, max_atoms, dim=1):
     extra = max_atoms - X.shape[0]
@@ -61,6 +62,8 @@ def process_data(data, max_atoms):
     res = {}
     
     for smile, (Z, D) in data.items():
-        res[smile] = (pad_(torch.LongTensor(Z), max_atoms), pad_(torch.FloatTensor(D), max_atoms, 2))
+        res[smile] = (pad_(torch.LongTensor(Z), max_atoms),
+                      pad_(torch.FloatTensor(D), max_atoms, 2),
+                      len(Z))
     
     return res
