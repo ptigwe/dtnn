@@ -8,6 +8,10 @@ def pad_(X, max_atoms, dim=1):
     extra = max_atoms - X.shape[0]
     return F.pad(X, (0, extra) * dim).clone()
 
+def pad_Dhat(Dh, max_atoms):
+    extra = max_atoms - Dh.shape[0]
+    return F.pad(Dh, (0, 0, 0, extra, 0, extra)).clone()
+
 def create_dummy(num_atoms, total_atoms):
     Z = torch.LongTensor(num_atoms).random_(total_atoms)
     D = torch.rand((num_atoms, num_atoms))
@@ -36,7 +40,7 @@ def create_mask(method):
         for size in sizes:
             masks.append(method(size.item(), full_size))
 
-        return torch.stack(masks) if len(sizes) > 1 else mask
+        return torch.stack(masks) #if len(sizes) > 1 else mask
     return fn
 
 @create_mask
