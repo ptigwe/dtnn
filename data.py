@@ -25,7 +25,7 @@ class QM8Dataset(Dataset):
     def __init__(self, fname, target, max_atoms, mu_min=-1, delta_mu=0.2,
                  mu_max=1, sigma=0.2, nrows=None, dist_method='euclid'):
         df = pd.read_json(fname, lines=True, orient='records', nrows=nrows)
-        self.target = torch.FloatTensor(df[target])
+        self.target = torch.FloatTensor(df[target].values)
         Zs, Ds, sizes = [], [], []
 
         for i, x in df.iterrows():

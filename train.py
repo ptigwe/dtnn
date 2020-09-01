@@ -22,7 +22,9 @@ class DTNNModule(pl.LightningModule):
                              / self.hparams.delta_mu)
 
         self.dtnn = models.MDTNN(self.hparams.basis, data.NUM_ATOMS,
-                                 num_gauss, self.hparams.hidden)
+                                 num_gauss, self.hparams.hidden, 3,
+                                 len(self.hparams.target), 'multiple')
+
     
     def forward(self, Z, D, sizes):
         return self.dtnn(Z, D, sizes)
@@ -31,7 +33,7 @@ class DTNNModule(pl.LightningModule):
         self.dataset = data.QM8Dataset(self.hparams.fname, self.hparams.target,
                                        data.MAX_ATOMS, self.hparams.mu_min,
                                        self.hparams.delta_mu, self.hparams.mu_max,
-                                       nrows=100, dist_method=self.hparams.dist_method)
+                                       nrows=None, dist_method=self.hparams.dist_method)
         size = len(self.dataset)
         test_size = int(size * 0.2)
         sizes = [size - 2*test_size, test_size, test_size]
@@ -82,7 +84,7 @@ class DTNNModule(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--basis', type=int, default=30)
         parser.add_argument('--hidden', type=int, default=15)
-        parser.add_argument('--target', type=str, default='E1-CC2')
+        parser.add_argument('--target', type=str, default=['E1-CC2', 'E2-CC2'])
         parser.add_argument('--dist_method', type=str, default='euclid')
         parser.add_argument('--mu_max', type=float, default=1)
         parser.add_argument('--mu_min', type=float, default=-1)

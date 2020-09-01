@@ -25,8 +25,34 @@ class InteractionBlock(nn.Module):
         mask = mask.to(X.device)
         return (mask.unsqueeze(-1) * X).sum(-3)
 
+class MLP(nn.Module):
+    def __init__(self, basis, hidden, target):
+        super().__init__()
+        self.mlp = nn.Sequential(nn.Linear(basis, hidden),
+                                 nn.Tanh(),
+                                 nn.Linear(hidden, target))
+
+    def forward(self, C):
+        return self.mlp(C)
+
+class TargetLayer(nn.Module):
+    def __init__(self, basis, hidden, target_sz, target_type):
+        super().__init__()
+        self.target_type = target_type
+        if target_type == 'single':
+            self.mlp = MLP(basis, hidden, target_sz)
+        else:
+            self.mlps = nn.ModuleList([MLP(basis, hidden, 1) for _ in range(target_sz)])
+
+    def forward(self, C):
+        if self.target_type == 'single':
+            return self.mlp(C)
+        else:
+            return torch.cat([mlp(C) for mlp in self.mlps], 2)
+
 class MDTNN(nn.Module):
-    def __init__(self, basis, num_atoms, num_gauss, hidden, T=3):
+    def __init__(self, basis, num_atoms, num_gauss, hidden, T=3, target_sz=1,
+                 target_type='single'):
         super().__init__()
         self.basis = basis
         self.T = T
@@ -34,9 +60,7 @@ class MDTNN(nn.Module):
         self.C_embed = nn.Embedding(num_atoms + 1, basis)
         self.df = nn.Linear(num_gauss, basis)
         self.interaction = InteractionBlock(basis, basis)
-        self.mlp = nn.Sequential(nn.Linear(basis, hidden),
-                                 nn.Tanh(),
-                                 nn.Linear(hidden, 1))
+        self.target = TargetLayer(basis, hidden, target_sz, target_type)
     
     def forward(self, Z, D, sizes):
         C = self.C_embed(Z)
@@ -45,10 +69,10 @@ class MDTNN(nn.Module):
         for _ in range(self.T):
             C = C + self.interaction(C, d_hat, sizes)
             
-        E = self.mlp(C).squeeze()
-        mask = utils.mask_1d(sizes, data.MAX_ATOMS)
+        E = self.target(C)#.squeeze()
+        mask = utils.mask_1d(sizes, data.MAX_ATOMS).unsqueeze(-1)
         mask = mask.to(E.device)
-        return (mask * E).sum(-1)#.squeeze()
+        return (mask * E).sum(1)#.squeeze()
 
 
 def init_weights(m):
