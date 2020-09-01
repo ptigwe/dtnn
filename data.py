@@ -5,6 +5,9 @@ import pandas as pd
 import numpy as np
 from enum import Enum
 
+NUM_ATOMS=110
+MAX_ATOMS=27
+
 def gaussian_expansion(D, mu_min=-1, delta_mu=0.2, mu_max=1, sigma=0.2):
     mu = np.arange(mu_min, mu_max + delta_mu, delta_mu)
     diff = D[:,:,np.newaxis] - mu[np.newaxis, np.newaxis, :]

@@ -8,7 +8,6 @@ import pytorch_lightning as pl
 import utils
 import data
 
-max_atoms = 30
 
 class InteractionBlock(nn.Module):
     def __init__(self, basis, hidden):
@@ -22,7 +21,7 @@ class InteractionBlock(nn.Module):
         X = torch.tanh(self.fc(X))
         
         num_batch = C.shape[0] if len(C.shape) > 2 else 1
-        mask = utils.mask_2d(sizes, max_atoms)
+        mask = utils.mask_2d(sizes, data.MAX_ATOMS)
         mask = mask.to(X.device)
         return (mask.unsqueeze(-1) * X).sum(-3)
 
@@ -47,7 +46,7 @@ class MDTNN(nn.Module):
             C = C + self.interaction(C, d_hat, sizes)
             
         E = self.mlp(C).squeeze()
-        mask = utils.mask_1d(sizes, max_atoms)
+        mask = utils.mask_1d(sizes, data.MAX_ATOMS)
         mask = mask.to(E.device)
         return (mask * E).sum(-1)#.squeeze()
 
