@@ -105,7 +105,9 @@ def main():
 
     model = DTNNModule(**vars(args))
     model.apply(models.init_weights)
-    trainer = pl.Trainer.from_argparse_args(args)
+
+    wandb_logger = pl.loggers.WandbLogger(name='TestRun', project='DTNN')
+    trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger)
     trainer.fit(model)
 
 if __name__ == '__main__':
