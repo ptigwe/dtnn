@@ -5,10 +5,10 @@ import pandas as pd
 import numpy as np
 from enum import Enum
 
-NUM_ATOMS=110
+NUM_ATOMS=9
 MAX_ATOMS=27
 
-def gaussian_expansion(D, mu_min=-1, delta_mu=0.2, mu_max=1, sigma=0.2):
+def gaussian_expansion(D, mu_min=-1, delta_mu=0.2, mu_max=10, sigma=0.2):
     mu = np.arange(mu_min, mu_max + delta_mu, delta_mu)
     diff = D[:,:,np.newaxis] - mu[np.newaxis, np.newaxis, :]
     return np.exp(-diff ** 2 / (2 * sigma))
@@ -23,7 +23,7 @@ def get_distance_matrix(X, dist_method):
 
 class QM8Dataset(Dataset):
     def __init__(self, fname, target, max_atoms, mu_min=-1, delta_mu=0.2,
-                 mu_max=1, sigma=0.2, nrows=None, dist_method='euclid'):
+                 mu_max=10, sigma=0.2, nrows=None, dist_method='euclid'):
         df = pd.read_json(fname, lines=True, orient='records', nrows=nrows)
         self.target = torch.FloatTensor(df[target].values)
         Zs, Ds, sizes = [], [], []

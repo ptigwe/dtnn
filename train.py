@@ -102,7 +102,7 @@ class DTNNModule(pl.LightningModule):
         parser.add_argument('--target', type=list, default=['E1-CC2', 'E2-CC2', 'f1-CC2', 'f2-CC2'])
         parser.add_argument('--target_type', type=str, default='single')
         parser.add_argument('--dist_method', type=str, default='euclid')
-        parser.add_argument('--mu_max', type=float, default=1)
+        parser.add_argument('--mu_max', type=float, default=10)
         parser.add_argument('--mu_min', type=float, default=-1)
         parser.add_argument('--delta_mu', type=float, default=0.2)
         parser.add_argument('--sigma', type=float, default=0.2)
@@ -124,7 +124,8 @@ def main():
     model.apply(models.init_weights)
     print(model)
 
-    wandb_logger = pl.loggers.WandbLogger(name='TestRun', project='DTNN')
+    wandb_logger = pl.loggers.WandbLogger(name=f'{args.target_type}_{args.dist_method}',
+                                          project='DTNN')
     trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger)
     trainer.fit(model)
     trainer.test(model)
