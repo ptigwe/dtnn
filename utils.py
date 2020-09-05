@@ -71,3 +71,9 @@ def process_data(data, max_atoms):
                       len(Z))
     
     return res
+
+def create_random_split(n, train_val=(.8, .1)):
+    idx = np.arange(n)
+    np.random.shuffle(idx)
+    train, val, test = np.split(idx, [int(train_val[0] * n), int(sum(train_val) * n)])
+    return {'train': train, 'val': val, 'test': test}

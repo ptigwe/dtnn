@@ -1,11 +1,13 @@
 from argparse import ArgumentParser
+import os
 import models
 import utils
 import data
+import pickle as pkl
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, Subset
 import pytorch_lightning as pl
 
 
@@ -14,6 +16,7 @@ class DTNNModule(pl.LightningModule):
                  mu_max=10, mu_min=-1, delta_mu=0.2, sigma=0.2,
                  num_workers=8, learning_rate=1e-4,
                  fname='data/rdkit_bound.json',
+                 split_file='data/split.pkl',
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -35,9 +38,16 @@ class DTNNModule(pl.LightningModule):
                                        self.hparams.delta_mu, self.hparams.mu_max,
                                        nrows=1000, dist_method=self.hparams.dist_method)
         size = len(self.dataset)
-        test_size = int(size * 0.2)
-        sizes = [size - 2*test_size, test_size, test_size]
-        self.train_dataset, self.test_dataset, self.valid_dataset = random_split(self.dataset, sizes)
+
+        if os.path.isfile(self.hparams.split_file):
+            with open(self.hparams.split_file, 'rb') as f:
+                split_dict = pkl.load(f)
+        else:
+            split_dict = utils.create_random_split(size)
+
+        self.train_dataset = Subset(self.dataset, split_dict['train'])
+        self.valid_dataset = Subset(self.dataset, split_dict['val'])
+        self.test_dataset = Subset(self.dataset, split_dict['test'])
     
     def train_dataloader(self):
         return DataLoader(self.train_dataset, self.hparams.batch_size,
@@ -99,6 +109,7 @@ class DTNNModule(pl.LightningModule):
         parser.add_argument('--num_workers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1e-4)
         parser.add_argument('--fname', type=str, default='data/rdkit_euclid.json')
+        parser.add_argument('--split_file', type=str, default='data/split.pkl')
         return parser
 
 
