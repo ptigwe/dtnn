@@ -13,8 +13,8 @@ import pytorch_lightning as pl
 
 class DTNNModule(pl.LightningModule):
     def __init__(self, basis=30, hidden=15, target='E1-CC2', dist_method='euclid',
-                 mu_max=10, mu_min=-1, delta_mu=0.2, sigma=0.2,
-                 num_workers=8, learning_rate=1e-4,
+                 target_type='single', mu_max=10, mu_min=-1, delta_mu=0.2,
+                 sigma=0.2, num_workers=8, learning_rate=1e-4,
                  fname='data/rdkit_bound.json',
                  split_file='data/split.pkl',
                  **kwargs):
@@ -26,7 +26,7 @@ class DTNNModule(pl.LightningModule):
 
         self.dtnn = models.MDTNN(self.hparams.basis, data.NUM_ATOMS,
                                  num_gauss, self.hparams.hidden, 3,
-                                 len(self.hparams.target), 'multiple')
+                                 len(self.hparams.target), self.hparams.target_type)
 
     
     def forward(self, Z, D, sizes):
@@ -99,7 +99,8 @@ class DTNNModule(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--basis', type=int, default=30)
         parser.add_argument('--hidden', type=int, default=15)
-        parser.add_argument('--target', type=str, default=['E1-CC2', 'E2-CC2', 'f1-CC2', 'f2-CC2'])
+        parser.add_argument('--target', type=list, default=['E1-CC2', 'E2-CC2', 'f1-CC2', 'f2-CC2'])
+        parser.add_argument('--target_type', type=str, default='single')
         parser.add_argument('--dist_method', type=str, default='euclid')
         parser.add_argument('--mu_max', type=float, default=1)
         parser.add_argument('--mu_min', type=float, default=-1)
@@ -121,6 +122,7 @@ def main():
 
     model = DTNNModule(**vars(args))
     model.apply(models.init_weights)
+    print(model)
 
     wandb_logger = pl.loggers.WandbLogger(name='TestRun', project='DTNN')
     trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger)
