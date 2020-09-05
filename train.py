@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, Subset
+import wandb
 import pytorch_lightning as pl
 
 
@@ -124,11 +125,17 @@ def main():
     model.apply(models.init_weights)
     print(model)
 
+    checkpoint_callbk = pl.callbacks.ModelCheckpoint('checkpoints/{epoch}_{val_loss:.2f}',
+                                                     save_top_k=1,
+                                                     verbose=True,
+                                                     monitor='val_loss',
+                                                     mode='min')
     wandb_logger = pl.loggers.WandbLogger(name=f'{args.target_type}_{args.dist_method}',
                                           project='DTNN')
-    trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger)
+    trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger, checkpoint_callback=checkpoint_callbk)
     trainer.fit(model)
     trainer.test(model)
+    wandb.save(checkpoint_callbk.best_model_path)
 
 if __name__ == '__main__':
     main()
