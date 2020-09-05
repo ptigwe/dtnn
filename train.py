@@ -108,7 +108,7 @@ class DTNNModule(pl.LightningModule):
         parser.add_argument('--batch_size', type=int, default=50)
         parser.add_argument('--num_workers', type=int, default=8)
         parser.add_argument('--learning_rate', type=float, default=1e-4)
-        parser.add_argument('--fname', type=str, default='data/rdkit_euclid.json')
+        parser.add_argument('--fname', type=str, default='data/sdf.json')
         parser.add_argument('--split_file', type=str, default='data/split.pkl')
         return parser
 
