@@ -33,7 +33,7 @@ class DTNNModule(pl.LightningModule):
         self.dataset = data.QM8Dataset(self.hparams.fname, self.hparams.target,
                                        data.MAX_ATOMS, self.hparams.mu_min,
                                        self.hparams.delta_mu, self.hparams.mu_max,
-                                       nrows=None, dist_method=self.hparams.dist_method)
+                                       nrows=1000, dist_method=self.hparams.dist_method)
         size = len(self.dataset)
         test_size = int(size * 0.2)
         sizes = [size - 2*test_size, test_size, test_size]
@@ -43,37 +43,42 @@ class DTNNModule(pl.LightningModule):
         return DataLoader(self.train_dataset, self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
     
-    def step(self, batch, batch_idx, loss_fn):
-        Z, D, sizes, target = batch
-        predict = self.forward(Z, D, sizes)
-        loss = loss_fn(predict, target)
-        return loss
-    
-    def training_step(self, batch, batch_idx):
-        loss = self.step(batch, batch_idx, F.mse_loss)
-        result = pl.TrainResult(minimize=loss)
-        result.log('train_loss', loss, prog_bar=True)
-        result.log_dict({'train_loss': loss})
-        return result
-    
     def val_dataloader(self):
         return DataLoader(self.valid_dataset, self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
-    
-    def validation_step(self, batch, batch_idx):
-        loss = self.step(batch, batch_idx, F.l1_loss)
-        
-        result = pl.EvalResult(checkpoint_on=loss)
-        result.log_dict({'val_loss': loss})
-        return result
     
     def test_dataloader(self):
         return DataLoader(self.test_dataset, self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
     
+    def step(self, batch, batch_idx, loss_fn):
+        Z, D, sizes, target = batch
+        predict = self.forward(Z, D, sizes)
+        loss = F.smooth_l1_loss(predict, target, reduction='none')
+        losses = loss.mean(0)
+        losses = {target: losses[i] for i, target in enumerate(self.hparams.target)}
+        return loss.mean(), losses
+    
+    def training_step(self, batch, batch_idx):
+        loss, losses = self.step(batch, batch_idx, F.mse_loss)
+        result = pl.TrainResult(minimize=loss)
+        result.log('train_loss', loss, prog_bar=True)
+        result.log_dict({'train_loss': loss})
+        result.log_dict({f'train_{target}': val for target, val in losses.items()})
+        return result
+    
+    def validation_step(self, batch, batch_idx):
+        loss, losses = self.step(batch, batch_idx, F.l1_loss)
+        
+        result = pl.EvalResult(checkpoint_on=loss)
+        result.log_dict({'val_loss': loss})
+        result.log_dict({f'val_{target}': val for target, val in losses.items()})
+        return result
+    
     def test_step(self, batch, batch_idx):
         result = self.validation_step(batch, batch_idx)
         result.rename_keys({'val_loss': 'test_loss'})
+        result.rename_keys({f'val_{target}': f'test_{target}' for target in self.hparams.target})
         return result
         
     def configure_optimizers(self):
@@ -109,6 +114,7 @@ def main():
     wandb_logger = pl.loggers.WandbLogger(name='TestRun', project='DTNN')
     trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger)
     trainer.fit(model)
+    trainer.test(model)
 
 if __name__ == '__main__':
     main()
