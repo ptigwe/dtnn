@@ -81,7 +81,7 @@ class DTNNModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         loss, losses = self.step(batch, batch_idx, F.l1_loss)
         
-        result = pl.EvalResult(checkpoint_on=loss)
+        result = pl.EvalResult(checkpoint_on=loss, early_stop_on=loss)
         result.log_dict({'val_loss': loss})
         result.log_dict({f'val_{target}': val for target, val in losses.items()})
         return result
@@ -125,17 +125,21 @@ def main():
     model.apply(models.init_weights)
     print(model)
 
-    checkpoint_callbk = pl.callbacks.ModelCheckpoint('checkpoints/{epoch}_{val_loss:.2f}',
+    checkpoint_cbk = pl.callbacks.ModelCheckpoint('checkpoints/{epoch}_{val_loss:.2f}',
                                                      save_top_k=1,
                                                      verbose=True,
                                                      monitor='val_loss',
                                                      mode='min')
+    early_stop_cbk = pl.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=True)
     wandb_logger = pl.loggers.WandbLogger(name=f'{args.target_type}_{args.dist_method}',
                                           project='DTNN')
-    trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger, checkpoint_callback=checkpoint_callbk)
+    trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger,
+                                            checkpoint_callback=checkpoint_cbk,
+                                            early_stop_callback=early_stop_cbk)
+
     trainer.fit(model)
     trainer.test(model)
-    wandb.save(checkpoint_callbk.best_model_path)
+    wandb.save(checkpoint_cbk.best_model_path)
 
 if __name__ == '__main__':
     main()
