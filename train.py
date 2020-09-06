@@ -37,7 +37,7 @@ class DTNNModule(pl.LightningModule):
         self.dataset = data.QM8Dataset(self.hparams.fname, self.hparams.target,
                                        data.MAX_ATOMS, self.hparams.mu_min,
                                        self.hparams.delta_mu, self.hparams.mu_max,
-                                       nrows=1000, dist_method=self.hparams.dist_method)
+                                       nrows=None, dist_method=self.hparams.dist_method)
         size = len(self.dataset)
 
         if os.path.isfile(self.hparams.split_file):
