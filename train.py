@@ -100,7 +100,7 @@ class DTNNModule(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--basis', type=int, default=30)
         parser.add_argument('--hidden', type=int, default=15)
-        parser.add_argument('--target', type=list, default=['E1-CC2', 'E2-CC2', 'f1-CC2', 'f2-CC2'])
+        parser.add_argument('--target', nargs='+', default=['E1-CC2', 'E2-CC2', 'f1-CC2', 'f2-CC2'])
         parser.add_argument('--target_type', type=str, default='single')
         parser.add_argument('--dist_method', type=str, default='euclid')
         parser.add_argument('--mu_max', type=float, default=10)
