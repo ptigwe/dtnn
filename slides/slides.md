@@ -5,6 +5,8 @@ date:
 revealjs-url: '.'
 css:
     - 'https://fonts.googleapis.com/css?family=Roboto+Slab:700'
+theme:
+    - white
 ---
 
 # Introduction
