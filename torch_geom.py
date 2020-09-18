@@ -28,7 +28,7 @@ class QM8(InMemoryDataset):
     
     def process(self):
         data_df = pd.read_json(self.raw_file_names[0],
-                               lines=True, nrows=10)
+                               lines=True, nrows=None)
         data_list = []
         for i, row in data_df.iterrows():
             edges = np.array(list(itertools.permutations(range(len(row.Z)), 2)))
@@ -57,7 +57,7 @@ class InteractionBlockMLP(nn.Module):
         self.fc = nn.Linear(hidden, basis, False)
     
     def forward(self, c, d):
-        return F.tanh(self.fc(self.cf(c) * self.df(d)))
+        return torch.tanh(self.fc(self.cf(c) * self.df(d)))
 
 
 class InteractionBlock(MessagePassing):
@@ -91,7 +91,7 @@ class DTNN(nn.Module):
         self.T = T
         
     def forward(self, data):
-        C = self.embed(data.Z)
+        C = self.embed(data.Z) 
         
         for _ in range(self.T):
             C = self.inter_blk(C, data.edge_index, data.edge_attr)
@@ -111,18 +111,50 @@ class DTNNModule(pl.LightningModule):
         return self.dtnn(data)
     
     def prepare_data(self):
-        self.train_data = QM8('')
+        self.dataset = QM8('')
+        size = len(self.dataset)
+
+        if os.path.isfile('data/split.pkl'):
+            with open('data/split.pkl', 'rb') as f:
+                split_dict = pkl.load(f)
+        else:
+            split_dict = utils.create_random_split(size)
+
+        self.train_dataset = self.dataset[split_dict['train']]
+        self.valid_dataset = self.dataset[split_dict['val']]
+        self.test_dataset = self.dataset[split_dict['test']]
         
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), 1e-3)
+        return torch.optim.Adam(self.parameters(), 1e-4)
         
     def train_dataloader(self):
-        return DataLoader(self.train_data, 2)
-    
+        return DataLoader(self.train_data, 32)
+
+    def val_dataloader(self):
+        return DataLoader(self.valid_dataset, 32)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_dataloader, 32)
+
     def training_step(self, batch, batch_idx):
         y_pred = self.forward(batch)
         loss = F.l1_loss(batch.y, y_pred)
-        return {'loss': loss, 'log': {'train_loss': loss}}
+        result = pl.TrainResult(minimize=loss)
+        result.log('train_loss', loss, prog_bar=True)
+        result.log_dict({'train_loss': loss})
+        return result
+
+    def validation_step(self, batch, batch_idx):
+        y_pred = self.forward(batch)
+        loss = F.l1_loss(batch.y, y_pred)
+        result =  pl.EvalResult(checkpoint_on=loss, early_stop_on=loss)
+        result.log_dict({'val_loss': loss})
+        return result
+
+    def test_step(self, batch, batch_idx):
+        result = self.validation_step(batch, batch_idx)
+        result.rename_keys({'val_loss': 'test_loss'})
+        return result
 
 def main():
     trainer = pl.Trainer()
