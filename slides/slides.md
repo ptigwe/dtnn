@@ -6,7 +6,7 @@ revealjs-url: '.'
 css:
     - 'https://fonts.googleapis.com/css?family=Roboto+Slab:700'
 theme:
-    - white
+    - black
 ---
 
 # Introduction
@@ -19,14 +19,14 @@ theme:
 - Results
 - Conclusion
 
-## Prior Work
-
-- [https://github.com/ptigwe/champs](https://github.com/ptigwe/champs)
-
 ## Original Paper
 
 - K.T. Schütt. F. Arbabzadah. S. Chmiela, K.-R. Müller, A. Tkatchenko.
 - Quantum-chemical insights from deep tensor neural networks.
+
+## Prior Work
+
+- [https://github.com/ptigwe/champs](https://github.com/ptigwe/champs)
 
 # Data
 
@@ -54,6 +54,7 @@ theme:
 
 ## RDKit
 
+::: incremental
 - Library for cheminformatics
 - Contains the tools needed for the task
     - `MolFromSmiles`
@@ -61,9 +62,11 @@ theme:
     - `Is3D`
     - `Get3DDistanceMatrix`
     - `GetDistanceMatrix`
+:::
 
 ## Issues with RDKit
 
+::: incremental
 - Molecules need to be embedded
     - Embedding is stochastic
         - As a form of data augmentation
@@ -71,6 +74,7 @@ theme:
         - Fails especially on larger molecules
 - Could use `GetMoleculeBoundsMatrix`
     - Conservative estimates of the distance
+:::
 
 ## External Dataset
 
@@ -102,11 +106,15 @@ Sourced from [MoleculeNet](http://moleculenet.ai/datasets-1/)
 # Model
 
 ## Network Architecture
-- Input
-    - $Z$
-        - A vector of nuclear charges
-    - $D$
-        - Matrix of atomic distances
+
+### Input
+
+- $Z \in \mathbb{Z}^N$
+    - A vector of nuclear charges
+- $D \in \mathbb{R}^{N \times N}$
+    - Matrix of atomic distances
+
+where $N$ is the number of atoms in a molecule
 
 ## Network Architecture
 
@@ -135,14 +143,14 @@ self.C_embed = nn.Embedding(num_atoms, basis)
 self.C_embed(Z_i)
 ```
 
-## Interaction Block
+## Interaction Module
 
 $v_{ij} = tanh \left[W^{fc} \left(
 (W^{cf} c_j + b^{f_1}) \cdot
 (W^{df} \hat{d}_{ij} + b^{f_2}) 
  \right) \right]$
 
-## Interaction Block
+## Interaction Module
 
 $v_{ij} = tanh \left[W^{fc} \left(
 (W^{cf} c_j + b^{f_1}) \cdot
@@ -159,7 +167,7 @@ self.df = nn.Linear(num_gauss, basis)
 A = self.df(D)
 ```
 
-## Interaction Block
+## Interaction Module
 
 $v_{i} = tanh \left[W^{fc} \left(
 (W^{cf} C + b^{f_1}) \cdot
@@ -195,6 +203,8 @@ $$ mask = \left( \begin{matrix} 0 & 1 & 1 & 0 \\ 1 & 0 & 1 & 0 \\ 1 & 1 & 0 & 0 
 ## Target Prediction
 
 $o_i = tanh(W^{out_1}c_i^{(T)} + b^{out_1})$
+
+
 $\hat{E}_{i} = W^{out_2}o_i + b^{out_2}$
 
 ```python
@@ -202,6 +212,9 @@ self.mlp = nn.Sequential(nn.Linear(basis, hidden),
                          nn.Tanh(),
                          nn.Linear(hidden, target))
 ```
+
+## Output aggregation
+$E = \sum_{i \in N}\hat{E}_{i}$
 
 ## Target Prediction
 
@@ -211,30 +224,6 @@ Two approaches for extending to multiple target values
     - Single MLP with multiple outputs
 - Multiple MLPs
     - Multiple networks connecting from $c_i^{(T)}$ to target
-
-# Training
-
-## Hyperparameters
-
-- Used defaults as described in the paper
-    - $\mu_{max} = 10$
-    - $\mu_{min} = -1$
-    - $\Delta{\mu} = \sigma = 0.2$
-    - $B = 30$
-    - $c_z \sim N(0, 1 / \sqrt{B})$
-
-## Metrics and Evaluation
-
-- MAE
-- Train : Validation : Test = 8:1:1
-
-Metrics and means of evaluation extracted from
-
-- https://pubs.rsc.org/en/content/articlepdf/2018/sc/c7sc02664a
-- https://jcheminf.biomedcentral.com/track/pdf/10.1186/s13321-019-0407-y
-- https://arxiv.org/pdf/2008.12187.pdf
-
-# Results
 
 ## Model Variation
 
@@ -269,6 +258,100 @@ mlps = [target(30, 15, 1) for _ in range(4)]
 ...
 return torch.cat([mlp(C) for mlp in mlps])
 ```
+
+# Graph Neural Network
+
+## Message Passing Neural Network
+
+$\mathbf{x}_i^{(k)} = \gamma^{(k)} \left( \mathbf{x}_i^{(k-1)}, \sum_{j \in \mathcal{N}(i)} \, M^{(k)}_{ij} \right)$
+
+
+$M^{(k)}_{ij} = \left(\mathbf{x}_i^{(k-1)}, \mathbf{x}_j^{(k-1)},\mathbf{e}_{j,i}\right)$
+
+## Message
+
+$M_{ij} = v_{ij}$
+
+``` python
+
+class InteractionBlockMLP(nn.Module):
+    def __init__(self, basis, hidden):
+        super().__init__()
+        self.cf = nn.Linear(basis, hidden)
+        self.df = nn.Linear(basis, hidden)
+        self.fc = nn.Linear(hidden, basis, False)
+```
+    
+    def forward(self, c, d):
+        return torch.tanh(self.fc(self.cf(c) * self.df(d)))
+
+## Message
+
+``` python
+
+class InteractionBlock(MessagePassing):
+    def __init__(self, basis, hidden, **kwargs):
+        super().__init__(**kwargs)
+        self.inter_blk = InteractionBlockMLP(basis, hidden)
+    
+    def forward(self, x, edge_index, edge_attr):
+        return x + self.propagate(edge_index, x=x,
+                                  edge_attr=edge_attr)
+    
+    def message(self, x_j, edge_attr):
+        return self.inter_blk(x_j, edge_attr)
+```
+
+## DTNN Network
+
+``` python
+class DTNN(nn.Module):
+    def __init__(self, basis, hidden, T=3, **kwargs):
+        super().__init__(**kwargs)
+        self.embed = nn.Embedding(10, basis)
+        self.inter_blk = InteractionBlock(basis, basis)
+        self.readout_mlp = MLP(basis, hidden, 4)
+        self.T = T
+
+```
+
+## DTNN Network
+
+``` python        
+    def forward(self, data):
+        C = self.embed(data.Z)
+        
+        for _ in range(self.T):
+            C = self.inter_blk(C, data.edge_index,
+                               data.edge_attr)
+        
+        return global_add_pool(self.readout_mlp(C),
+                               data.batch)
+```
+
+# Training
+
+## Hyperparameters
+
+- Used defaults as described in the paper
+    - $\mu_{max} = 10$
+    - $\mu_{min} = -1$
+    - $\Delta{\mu} = \sigma = 0.2$
+    - $B = 30$
+    - $c_z \sim N(0, 1 / \sqrt{B})$
+
+## Metrics and Evaluation
+
+- MAE
+- Train : Validation : Test = 8:1:1
+
+Metrics and means of evaluation extracted from
+
+- https://pubs.rsc.org/en/content/articlepdf/2018/sc/c7sc02664a
+- https://jcheminf.biomedcentral.com/track/pdf/10.1186/s13321-019-0407-y
+- https://arxiv.org/pdf/2008.12187.pdf
+
+# Results
 
 ## Training
 
