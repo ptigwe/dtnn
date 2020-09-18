@@ -65,13 +65,13 @@ class DTNNModule(pl.LightningModule):
     def step(self, batch, batch_idx, loss_fn):
         Z, D, sizes, target = batch
         predict = self.forward(Z, D, sizes)
-        loss = F.smooth_l1_loss(predict, target, reduction='none')
+        loss = loss_fn(predict, target, reduction='none')
         losses = loss.mean(0)
         losses = {target: losses[i] for i, target in enumerate(self.hparams.target)}
         return loss.mean(), losses
     
     def training_step(self, batch, batch_idx):
-        loss, losses = self.step(batch, batch_idx, F.mse_loss)
+        loss, losses = self.step(batch, batch_idx, F.smooth_l1_loss)
         result = pl.TrainResult(minimize=loss)
         result.log('train_loss', loss, prog_bar=True)
         result.log_dict({'train_loss': loss})
