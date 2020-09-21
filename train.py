@@ -7,9 +7,17 @@ import pickle as pkl
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, Subset
+import torch.utils.data as tch_data
+import torch_geometric.data as geom_data
 import wandb
 import pytorch_lightning as pl
+
+
+def impl_(implementation, vanilla, graph):
+    assert(implementation in ['vanilla', 'graph'])
+    if implementation == 'vanilla':
+        return vanilla
+    return graph
 
 
 class DTNNModule(pl.LightningModule):
@@ -18,6 +26,7 @@ class DTNNModule(pl.LightningModule):
                  sigma=0.2, num_workers=8, learning_rate=1e-4,
                  fname='data/rdkit_bound.json',
                  split_file='data/split.pkl',
+                 implementation='vanilla',
                  **kwargs):
         super().__init__()
         self.save_hyperparameters()
@@ -25,19 +34,25 @@ class DTNNModule(pl.LightningModule):
         num_gauss = 1 + int((self.hparams.mu_max - self.hparams.mu_min)
                              / self.hparams.delta_mu)
 
-        self.dtnn = models.vanilla.MDTNN(self.hparams.basis, data.NUM_ATOMS,
+
+        assert(implementation in ['vanilla', 'graph'])
+        self.impl_ = lambda x, y: impl_(self.hparams.implementation, x, y)
+        dtnn_m = self.impl_(models.vanilla, models.torch_geom)
+
+        self.dtnn = dtnn_m.DTNN(self.hparams.basis, data.NUM_ATOMS,
                                  num_gauss, self.hparams.hidden, 3,
                                  len(self.hparams.target), self.hparams.target_type)
 
     
-    def forward(self, Z, D, sizes):
-        return self.dtnn(Z, D, sizes)
+    def forward(self, *args):
+        return self.dtnn(*args)
     
     def prepare_data(self):
-        self.dataset = data.QM8Dataset(self.hparams.fname, self.hparams.target,
-                                       data.MAX_ATOMS, self.hparams.mu_min,
-                                       self.hparams.delta_mu, self.hparams.mu_max,
-                                       nrows=None, dist_method=self.hparams.dist_method)
+        Dataset = self.impl_(data.QM8Dataset, data.GraphQM8)
+        self.dataset = Dataset(self.hparams.fname, self.hparams.target,
+                               data.MAX_ATOMS, self.hparams.mu_min,
+                               self.hparams.delta_mu, self.hparams.mu_max,
+                               nrows=2000, dist_method=self.hparams.dist_method)
         size = len(self.dataset)
 
         if os.path.isfile(self.hparams.split_file):
@@ -46,25 +61,38 @@ class DTNNModule(pl.LightningModule):
         else:
             split_dict = utils.create_random_split(size)
 
-        self.train_dataset = Subset(self.dataset, split_dict['train'])
-        self.valid_dataset = Subset(self.dataset, split_dict['val'])
-        self.test_dataset = Subset(self.dataset, split_dict['test'])
+        if self.hparams.implementation == 'vanilla':
+            self.train_dataset = tch_data.Subset(self.dataset, split_dict['train'])
+            self.valid_dataset = tch_data.Subset(self.dataset, split_dict['val'])
+            self.test_dataset = tch_data.Subset(self.dataset, split_dict['test'])
+        else:
+            self.train_dataset = self.dataset[list(split_dict['train'])]
+            self.valid_dataset = self.dataset[list(split_dict['val'])]
+            self.test_dataset = self.dataset[list(split_dict['test'])]
     
     def train_dataloader(self):
+        DataLoader = self.impl_(tch_data.DataLoader, geom_data.DataLoader)
         return DataLoader(self.train_dataset, self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
     
     def val_dataloader(self):
+        DataLoader = self.impl_(tch_data.DataLoader, geom_data.DataLoader)
         return DataLoader(self.valid_dataset, self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
     
     def test_dataloader(self):
+        DataLoader = self.impl_(tch_data.DataLoader, geom_data.DataLoader)
         return DataLoader(self.test_dataset, self.hparams.batch_size,
                           num_workers=self.hparams.num_workers)
     
     def step(self, batch, batch_idx, loss_fn):
-        Z, D, sizes, target = batch
-        predict = self.forward(Z, D, sizes)
+        if self.hparams.implementation == 'vanilla':
+            Z, D, sizes, target = batch
+            predict = self.forward(Z, D, sizes)
+        else:
+            predict = self.forward(batch)
+            target = batch.y
+
         loss = loss_fn(predict, target, reduction='none')
         losses = loss.mean(0)
         losses = {target: losses[i] for i, target in enumerate(self.hparams.target)}
@@ -112,6 +140,7 @@ class DTNNModule(pl.LightningModule):
         parser.add_argument('--learning_rate', type=float, default=1e-4)
         parser.add_argument('--fname', type=str, default='data/sdf.json')
         parser.add_argument('--split_file', type=str, default='data/split.pkl')
+        parser.add_argument('--implementation', type=str, default='vanilla')
         return parser
 
 
@@ -126,20 +155,20 @@ def main():
     print(model)
 
     checkpoint_cbk = pl.callbacks.ModelCheckpoint('checkpoints/{epoch}_{val_loss:.2f}',
-                                                     save_top_k=1,
-                                                     verbose=True,
-                                                     monitor='val_loss',
-                                                     mode='min')
+                                                 save_top_k=1,
+                                                 verbose=True,
+                                                 monitor='val_loss',
+                                                 mode='min')
     early_stop_cbk = pl.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=True)
-    wandb_logger = pl.loggers.WandbLogger(name=f'{args.target_type}_{args.dist_method}',
-                                          project='DTNN')
+    wandb_logger = None#pl.loggers.WandbLogger(name=f'{args.target_type}_{args.dist_method}',
+                       #                   project='DTNN')
     trainer = pl.Trainer.from_argparse_args(args, logger=wandb_logger,
                                             checkpoint_callback=checkpoint_cbk,
                                             early_stop_callback=early_stop_cbk)
 
     trainer.fit(model)
     trainer.test(model)
-    wandb.save(checkpoint_cbk.best_model_path)
+    #wandb.save(checkpoint_cbk.best_model_path)
 
 if __name__ == '__main__':
     main()

@@ -50,7 +50,7 @@ class TargetLayer(nn.Module):
         else:
             return torch.cat([mlp(C) for mlp in self.mlps], 2)
 
-class MDTNN(nn.Module):
+class DTNN(nn.Module):
     def __init__(self, basis, num_atoms, num_gauss, hidden, T=3, target_sz=1,
                  target_type='single'):
         super().__init__()
