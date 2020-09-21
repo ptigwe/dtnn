@@ -25,7 +25,7 @@ class DTNNModule(pl.LightningModule):
         num_gauss = 1 + int((self.hparams.mu_max - self.hparams.mu_min)
                              / self.hparams.delta_mu)
 
-        self.dtnn = models.MDTNN(self.hparams.basis, data.NUM_ATOMS,
+        self.dtnn = models.vanilla.MDTNN(self.hparams.basis, data.NUM_ATOMS,
                                  num_gauss, self.hparams.hidden, 3,
                                  len(self.hparams.target), self.hparams.target_type)
 

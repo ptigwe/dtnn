@@ -73,13 +73,3 @@ class MDTNN(nn.Module):
         mask = utils.mask_1d(sizes, data.MAX_ATOMS).unsqueeze(-1)
         mask = mask.to(E.device)
         return (mask * E).sum(1)#.squeeze()
-
-
-def init_weights(m):
-    if type(m) == nn.Embedding:
-        nn.init.normal_(m.weight)
-    if type(m) == nn.Linear:
-        nn.init.xavier_uniform_(m.weight)
-        if m.bias is not None: 
-            m.bias.data.fill_(0)
-
