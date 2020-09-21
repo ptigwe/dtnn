@@ -1,5 +1,7 @@
 import itertools
 
+import os
+import utils
 import data
 import numpy as np
 import pandas as pd
@@ -11,42 +13,6 @@ import torch.nn.functional as F
 from torch_scatter import scatter
 from torch_geometric.nn import global_add_pool, MessagePassing
 from torch_geometric.data import Data, DataLoader, InMemoryDataset
-
-
-class QM8(InMemoryDataset):
-    def __init__(self, root, transform=None):
-        super().__init__(root, transform, None)
-        self.data, self.slices = torch.load(self.processed_paths[0])
-        
-    @property
-    def raw_file_names(self):
-        return ["data/sdf.json"]
-    
-    @property
-    def processed_file_names(self):
-        return ['processed.pt']
-    
-    def process(self):
-        data_df = pd.read_json(self.raw_file_names[0],
-                               lines=True, nrows=None)
-        data_list = []
-        for i, row in data_df.iterrows():
-            edges = np.array(list(itertools.permutations(range(len(row.Z)), 2)))
-            Z = torch.LongTensor(row.Z)
-            
-            D = np.array(data.get_distance_matrix(row, 'is_3D'))
-            D_hat = data.gaussian_expansion(D, -1, 0.2, 1, 0.2)
-            D = np.array([D_hat[x, y, :] for x, y in edges])
-            
-            d = Data(Z=Z,
-                     edge_index=torch.LongTensor(edges.T),
-                     num_nodes=len(Z),
-                     edge_attr=torch.FloatTensor(D),
-                     y=torch.FloatTensor([row[['E1-CC2', 'E2-CC2', 'f1-CC2', 'f2-CC2']]]))
-            print(d)
-            data_list.append(d)
-        self.data, self.slices = self.collate(data_list)
-        torch.save((self.data, self.slices), f'processed/{self.processed_file_names[0]}')
 
 
 class InteractionBlockMLP(nn.Module):
@@ -82,6 +48,7 @@ class MLP(nn.Module):
     def forward(self, X):
         return self.mlp(X)
 
+
 class DTNN(nn.Module):
     def __init__(self, basis, hidden, T=3, **kwargs):
         super().__init__(**kwargs)
@@ -111,7 +78,7 @@ class DTNNModule(pl.LightningModule):
         return self.dtnn(data)
     
     def prepare_data(self):
-        self.dataset = QM8('')
+        self.dataset = data.GraphQM8('')
         size = len(self.dataset)
 
         if os.path.isfile('data/split.pkl'):
@@ -120,15 +87,15 @@ class DTNNModule(pl.LightningModule):
         else:
             split_dict = utils.create_random_split(size)
 
-        self.train_dataset = self.dataset[split_dict['train']]
-        self.valid_dataset = self.dataset[split_dict['val']]
-        self.test_dataset = self.dataset[split_dict['test']]
+        self.train_dataset = self.dataset[list(split_dict['train'])]
+        self.valid_dataset = self.dataset[list(split_dict['val'])]
+        self.test_dataset = self.dataset[list(split_dict['test'])]
         
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
         
     def train_dataloader(self):
-        return DataLoader(self.train_data, 32)
+        return DataLoader(self.train_dataset, 32)
 
     def val_dataloader(self):
         return DataLoader(self.valid_dataset, 32)
@@ -155,6 +122,7 @@ class DTNNModule(pl.LightningModule):
         result = self.validation_step(batch, batch_idx)
         result.rename_keys({'val_loss': 'test_loss'})
         return result
+
 
 def main():
     trainer = pl.Trainer()
