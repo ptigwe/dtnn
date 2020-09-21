@@ -1,4 +1,6 @@
 import torch
+import itertools
+
 import utils
 import numpy as np
 import pandas as pd
@@ -51,8 +53,6 @@ class QM8Dataset(Dataset):
 class GraphQM8(InMemoryDataset):
     def __init__(self, fname, target=TARGET, max_atoms=MAX_ATOMS, mu_min=-1, delta_mu=0.2,
                  mu_max=10, sigma=0.2, nrows=None, dist_method='euclid'):
-        super().__init__('', None, None)
-
         self.fname = fname
         self.target = target
         self.max_atoms = max_atoms
@@ -63,11 +63,12 @@ class GraphQM8(InMemoryDataset):
         self.nrows = nrows
         self.dist_method = dist_method
 
+        super().__init__('', None, None)
         self.data, self.slices = torch.load(self.processed_paths[0])
         
     @property
     def raw_file_names(self):
-        return [self.fname]
+        return ['data/sdf.json']
     
     @property
     def processed_file_names(self):
@@ -81,7 +82,7 @@ class GraphQM8(InMemoryDataset):
             edges = np.array(list(itertools.permutations(range(len(row.Z)), 2)))
             Z = torch.LongTensor(row.Z)
             
-            D = np.array(data.get_distance_matrix(row, 'is_3D'))
+            D = np.array(get_distance_matrix(row, 'is_3D'))
             D_hat = gaussian_expansion(D, self.mu_min, self.delta_mu,
                                        self.mu_max, self.sigma)
             D = np.array([D_hat[x, y, :] for x, y in edges])
